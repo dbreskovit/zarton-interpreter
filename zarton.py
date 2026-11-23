@@ -3,7 +3,7 @@ import re
 import sys
 
 pos = 0 #Indica qual token está sendo lido
-KEYWORDS = ['if', 'else', 'while', 'hip'] #Palavras reservadas: não podem ser identificadores
+KEYWORDS = ['if', 'else', 'while', 'hip', 'positivo','negativo','zero'] #Palavras reservadas: não podem ser identificadores
 tabela_simbolos = {} #tabela de símbolos
 executar = True #Se falso analisa somente a sintaxe sem executar.
 
@@ -268,6 +268,38 @@ def regra_if():
             pular_comandos()
         consumir("}")
 
+
+
+def sinal(numero):
+    if not executar:
+        return None
+    
+    if numero[1] > 0: 
+        return "positivo"
+    elif numero[1] < 0:
+        return "negativo"
+    elif numero[1] == 0:
+        return "zero"
+
+def regra_bloco(executa):
+    consumir("{")
+    if token_atual () != "}":
+        if executa:
+            regra_comando()
+        else: 
+            pular_comandos()
+        consumir("}")
+
+def regra_positivo():
+    consumir("positivo")
+    consumir("(")
+    resultado = sinal(regra_exp()) # "negativo"
+    consumir(")")
+    regra_bloco(resultado == "positivo")
+    consumir("negativo")
+    regra_bloco(resultado == "negativo")
+    consumir("zero")
+    regra_bloco(resultado == "zero")
 # <while> -> while ( <expc> ) { <comandos> }
 # x = 0 ;
 # while ( x < 2 ) {
@@ -298,10 +330,12 @@ def regra_comando():
         regra_if()
     elif token_atual() == "while":
         regra_while()
+    elif token_atual() == "positivo":
+        regra_positivo()
     elif token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
         regra_atrib()
     else:
-        erro_sintatico("era esperado 'if', 'while' ou um identificador mas encontrou '" + str(token_atual()) + "'")
+        erro_sintatico("era esperado 'if', 'while', 'positivo' ou um identificador mas encontrou '" + str(token_atual()) + "'")
 
 # <comandos> -> <comando> { <comando> }
 def regra_comandos():
@@ -354,3 +388,21 @@ analisar('z = "Primeiro:" + "Segundo:" ;', True) # lê dois números e soma
 analisar('z = "Decimal:" * 2 ;', True) # usuário digita 1,5 -> z = 3.0
 analisar('z = "Digite:" ;', False) # usuário digita abc -> erro semântico
 analisar('a = 0 ; if ( a ) { z = "não pergunta" ; }', True) # bloco pulado: não lê nada
+analisar("a = 5 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 1
+analisar("a = 0 - 5 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 2
+analisar("a = 0 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 3
+analisar("a = 1 ; positivo ( a - 3 ) { z = 1 ; } negativo { } zero { z = 3 ; }", True) # negativo vazio: nada executa
+analisar("positivo ( 1 ) { } negativo { } zero { }", True) # todos os blocos vazios
+analisar("a = 2 ; b = 3 ; positivo ( a + b ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 1
+analisar("a = 2 ; b = 3 ; positivo ( a - b * 2 ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 2
+analisar("a = 2 ; b = 2 ; positivo ( ( a - b ) * 5 ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 3
+analisar("a = 0 - 2 ; b = 0 - 3 ; positivo ( a @ b ) { z = 1 ; } negativo { z = 2 ; } zero { }", True) # z = 2
+analisar("a = 2 ; b = 3 ; positivo ( a < b ) { z = 1 ; } negativo { } zero { }", False) # comparação (booleano) não é permitida
+analisar("a = 2 ; b = 3 ; positivo ( a + 1 == b ) { z = 1 ; } negativo { } zero { }", False) # comparação (booleano) não é permitida
+analisar("a = 1 ; positivo ( a ) { z = 1 ; } negativo { z = hip ( a , c ) ; } zero { }", True) # bloco pulado: c não é buscado
+analisar("a = 1 ; if ( 0 ) { positivo ( a ) { z = 1 ; } negativo { } zero { } }", True) # dentro de bloco pulado: nada executa
+analisar("a = 1 ; positivo ( a ) { z = 1 ; } zero { z = 3 ; } negativo { z = 2 ; }", False) # ordem errada
+analisar("a = 1 ; positivo ( a ) { z = 1 ; }", False) # faltam negativo e zero
+analisar("a = 1 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; }", False) # falta zero
+analisar("a = 1 ; positivo ( a ) { z = 1 ; } zero { z = 3 ; }", False) # falta negativo
+analisar("negativo { z = 2 ; }", False) # negativo sem positivo
