@@ -1,9 +1,8 @@
 import math
-import re
 import sys
+from tokenizar import ErroLexico, tokenizar
 
 pos = 0 #Indica qual token está sendo lido
-KEYWORDS = ['if', 'else', 'while', 'hip'] #Palavras reservadas: não podem ser identificadores
 tabela_simbolos = {} #tabela de símbolos
 executar = True #Se falso analisa somente a sintaxe sem executar.
 
@@ -101,7 +100,7 @@ def ler_entrada(texto):
     if digitado.isdigit():
         return ("INT", int(digitado))
     try:
-        return ("FLOAT", float(digitado.replace(",", ".")))
+        return ("FLOAT", float(digitado))
     except ValueError:
         erro_semantico("o valor digitado '" + digitado + "' não é um número.")
 
@@ -129,13 +128,19 @@ def pular_comandos():
 #Retorna o token atual
 def token_atual():
     if pos < len(tokens):
-        return tokens[pos]
+        return tokens[pos].lexema
+    else:
+        return None
+
+def tipo_token_atual():
+    if pos < len(tokens):
+        return tokens[pos].tipo
     else:
         return None
 
 #Função de relatório de erro sintático
 def erro_sintatico(msg):
-    print("Contexto: " + ' '.join(tokens[0:pos])) #Imprime o que deu certo
+    print("Contexto: " + ' '.join(token.lexema for token in tokens[0:pos])) #Imprime o que deu certo
     print("Erro Sintático:", msg)
     sys.exit(1) #Esse exit será capturado na função analisar
 
@@ -151,7 +156,7 @@ def consumir(token_esperado):
 #Consome um identificador e retorna o nome dele, ou causa erro sintático.
 def consumir_identificador():
     identificador = token_atual() #capturar antes do consumo
-    if identificador == None or not identificador.isalpha() or identificador in KEYWORDS:
+    if tipo_token_atual() != "ID":
         erro_sintatico("era esperado um identificador mas encontrou '" + str(identificador) + "'")
     consumir(identificador)
     return identificador
@@ -178,15 +183,19 @@ def regra_fator():
         temp = regra_expc() #("INT", 11)
         consumir(")")
         return temp #retorno depois do consumo
-    elif token_atual()!=None and token_atual().isdigit():
+    elif tipo_token_atual() == "FLOAT":
+        numero = float(token_atual())
+        consumir(token_atual())
+        return ("FLOAT", numero)
+    elif tipo_token_atual() == "INT":
         numero = int(token_atual()) # capturar antes do consumo
         consumir(token_atual())
         return ("INT", numero) # retornar depois do consumo
-    elif token_atual()!=None and token_atual().startswith('"') and token_atual().endswith('"'):
+    elif tipo_token_atual() == "STRING":
         texto = token_atual()[1:-1] # capturar antes do consumo, sem as aspas
         consumir(token_atual())
         return ler_entrada(texto)
-    elif token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
+    elif tipo_token_atual() == "ID":
         identificador = token_atual() # capturar antes do consumo
         consumir(token_atual())
         (tipo, valor) = buscar_identificador(identificador)
@@ -230,7 +239,7 @@ def regra_expc():
 # <atrib> -> _id_ = <expc> ;
 # a = 1 + 1 ;
 def regra_atrib():
-    if token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
+    if tipo_token_atual() == "ID":
         identificador = token_atual() #Capturando antes do consumo o id
         consumir(token_atual()) #a
         consumir("=")
@@ -298,7 +307,7 @@ def regra_comando():
         regra_if()
     elif token_atual() == "while":
         regra_while()
-    elif token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
+    elif tipo_token_atual() == "ID":
         regra_atrib()
     else:
         erro_sintatico("era esperado 'if', 'while' ou um identificador mas encontrou '" + str(token_atual()) + "'")
@@ -306,13 +315,8 @@ def regra_comando():
 # <comandos> -> <comando> { <comando> }
 def regra_comandos():
     regra_comando()
-    while token_atual() != None and token_atual().isalpha():
+    while tipo_token_atual() in ["ID", "RESERVADA"]:
         regra_comando()
-
-#Separa o código em tokens (provisório: será trocado pelo autômato do léxico)
-def tokenizar(codigo):
-    padrao = r'".*?"|\w+|==|[=+\-*/<>@(),;{}]'
-    return re.findall(padrao, codigo)
 
 #Função principal
 def analisar(codigo, correto):
@@ -325,32 +329,39 @@ def analisar(codigo, correto):
     print(codigo)
     pos = 0
     tabela_simbolos = {} #Reinicia a tabela de símbolos
-    tokens = tokenizar(codigo)
     ok = True
     try:
+        tokens = tokenizar(codigo)
         regra_comandos() #chamando a regra inicial da gramática
         if pos < len(tokens):
             erro_sintatico("'" + token_atual() + "' não era esperado.")
         else:
             print("A sintaxe está correta.")
             print(tabela_simbolos)
+    except ErroLexico as erro:
+        print("Erro Léxico:", erro)
+        ok = False
     except SystemExit:
         ok = False #só entra aqui se houve erro sintático ou semântico identificado pelas nossas funções de erro.
 
     print("[OK]" if ok == correto else "[PROBLEMA]")
 
-analisar("a = 1 ; b = 2 ; z = a @ b ;", True)  # z=2
-analisar("z = 1 @  ;", False)  # "Erro sintático! Esperava INT ou o indentificador, mas encontrou ";""
-analisar("z = 1 @ 2 @ 3 ;", True) # z = 3
-analisar("z = ( 1 @ 2 ) + ( 3 @ 4 ) ;", True)
-analisar("z = 1 @ 2 + 3 @ 4 ;", True) #z = 5
-analisar("a = 3 ; b = 4 ; z = hip ( a , b ) ;", True) # z = 5.0
-analisar("a = 3 ; b = 4 ; z = hip ( a , b ) @ 2 * 3 ;", True) # z = 6
-analisar("z = hip ( 3 , 4 ) ;", False) # só aceita identificador
-analisar("a = 3 ; z = hip ( a , c ) ;", False) # c não declarado
-analisar("a = 0 ; if ( a ) { z = hip ( a , c ) ; }", True) # não executa: c não é buscado
-analisar('z = "Digite o valor:" ;', True) # usuário digita 7 -> z = 7
-analisar('z = "Primeiro:" + "Segundo:" ;', True) # lê dois números e soma
-analisar('z = "Decimal:" * 2 ;', True) # usuário digita 1,5 -> z = 3.0
-analisar('z = "Digite:" ;', False) # usuário digita abc -> erro semântico
-analisar('a = 0 ; if ( a ) { z = "não pergunta" ; }', True) # bloco pulado: não lê nada
+# analisar("a = 1 ; b = 2 ; z = a @ b ;", True)  # z=2
+# analisar("z = 1 @  ;", False)  # "Erro sintático! Esperava INT ou o indentificador, mas encontrou ";""
+# analisar("z = 1 @ 2 @ 3 ;", True) # z = 3
+# analisar("z = ( 1 @ 2 ) + ( 3 @ 4 ) ;", True)
+# analisar("z = 1 @ 2 + 3 @ 4 ;", True) #z = 5
+# analisar("a = 3 ; b = 4 ; z = hip ( a , b ) ;", True) # z = 5.0
+# analisar("a = 3 ; b = 4 ; z = hip ( a , b ) @ 2 * 3 ;", True) # z = 6
+# analisar("z = hip ( 3 , 4 ) ;", False) # só aceita identificador
+# analisar("a = 3 ; z = hip ( a , c ) ;", False) # c não declarado
+# analisar("a = 0 ; if ( a ) { z = hip ( a , c ) ; }", True) # não executa: c não é buscado
+# analisar('z = "Digite o valor:" ;', True) # usuário digita 7 -> z = 7
+# analisar('z = "Primeiro:" + "Segundo:" ;', True) # lê dois números e soma
+# analisar('z = "Decimal:" * 2 ;', True) # usuário digita 1,5 -> z = 3.0
+# analisar('z = "Digite:" ;', False) # usuário digita abc -> erro semântico
+# analisar('a = 0 ; if ( a ) { z = "não pergunta" ; }', True) # bloco pulado: não lê nada]
+
+analisar('x = 5 ; positivo ( x ) { z = 1 } negativo { z = 2 } zero { z = 3 }', True) # z = 1
+
+analisar (' x = 5,67 ;', True)
