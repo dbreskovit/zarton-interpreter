@@ -1,11 +1,12 @@
 import math
-import re
 import sys
+from tokenizar import ErroLexico, tokenizar
 
 pos = 0 #Indica qual token está sendo lido
 KEYWORDS = ['if', 'else', 'while', 'hip', 'positivo','negativo','zero'] #Palavras reservadas: não podem ser identificadores
 tabela_simbolos = {} #tabela de símbolos
 executar = True #Se falso analisa somente a sintaxe sem executar.
+codigo_atual = ""
 
 # {
 #   "x": {"tipo": "INT", "valor": 5},
@@ -17,9 +18,27 @@ executar = True #Se falso analisa somente a sintaxe sem executar.
 
 # ==================================== interpretador ==
 
-def erro_semantico(msg):
-    print("Erro Semântico:", msg)
-    sys.exit(1) #Esse erro será capturado na função analisar.
+def obter_linha(indice=None):
+    if indice is None:
+        indice = pos
+    if not codigo_atual:
+        return 1
+    if not tokens:
+        return 1
+
+    idx=min(max(indice, 0), len(tokens)-1)
+    lexema = tokens[idx].lexema
+
+    pos_char = codigo_atual.find(lexema)
+    if pos_char == -1:
+        return 1
+    return codigo_atual[:pos_char].count("\n") + 1   
+
+def erro_semantico(msg, linha=None):
+    if linha is None:
+        linha = obter_linha()
+    print(f"Linha {linha}: Erro Semântico:", msg)
+    sys.exit(1)
 
 def executar_operacao(esquerda, op, direita):
     if not executar:
@@ -46,7 +65,7 @@ def executar_operacao(esquerda, op, direita):
         tipo = "FLOAT"
         return (tipo, valor)
 
-    #computa o valor das operações + - *
+    #computa o valor das operações + - * @
     if op == '+':
         valor = esquerda[1] + direita[1]
     elif op == '-':
@@ -59,7 +78,7 @@ def executar_operacao(esquerda, op, direita):
         #Não deveria chegar aqui: léxico ou sintático já deveria proibir operadores inválidos
         erro_semantico("Operador desconhecido '" + op + "'.")
 
-    #Infere o tipo do retorno de + - *
+    #Infere o tipo do retorno de + - * @
     if esquerda[0] == "FLOAT" or direita[0] == "FLOAT":
         tipo = "FLOAT"
 
@@ -101,7 +120,7 @@ def ler_entrada(texto):
     if digitado.isdigit():
         return ("INT", int(digitado))
     try:
-        return ("FLOAT", float(digitado.replace(",", ".")))
+        return ("FLOAT", float(digitado))
     except ValueError:
         erro_semantico("o valor digitado '" + digitado + "' não é um número.")
 
@@ -129,15 +148,23 @@ def pular_comandos():
 #Retorna o token atual
 def token_atual():
     if pos < len(tokens):
-        return tokens[pos]
+        return tokens[pos].lexema
+    else:
+        return None
+
+def tipo_token_atual():
+    if pos < len(tokens):
+        return tokens[pos].tipo
     else:
         return None
 
 #Função de relatório de erro sintático
-def erro_sintatico(msg):
-    print("Contexto: " + ' '.join(tokens[0:pos])) #Imprime o que deu certo
-    print("Erro Sintático:", msg)
-    sys.exit(1) #Esse exit será capturado na função analisar
+def erro_sintatico(msg, linha=None):
+    if linha is None:
+        linha = obter_linha()
+    print("Contexto: " + ' '.join(token.lexema for token in tokens[0:pos]))
+    print(f"Linha {linha}: Erro Sintático:", msg)
+    sys.exit(1)
 
 #avalia se o token é igual ao token esperado
 #se for avança para o proximo token, senão causa um erro.
@@ -151,7 +178,7 @@ def consumir(token_esperado):
 #Consome um identificador e retorna o nome dele, ou causa erro sintático.
 def consumir_identificador():
     identificador = token_atual() #capturar antes do consumo
-    if identificador == None or not identificador.isalpha() or identificador in KEYWORDS:
+    if tipo_token_atual() != "ID":
         erro_sintatico("era esperado um identificador mas encontrou '" + str(identificador) + "'")
     consumir(identificador)
     return identificador
@@ -167,7 +194,7 @@ def regra_hip():
     consumir(")")
     return calcular_hip(a, b)
 
-# <fator> -> (<expc>) | _int_ | _id_ | <hip>
+# <fator> -> (<expc>) | _int_ | _float_ | _string_ | _id_ | <hip>
 # (7 + 6)
 # Retorna (tipo, valor)
 def regra_fator():
@@ -178,15 +205,19 @@ def regra_fator():
         temp = regra_expc() #("INT", 11)
         consumir(")")
         return temp #retorno depois do consumo
-    elif token_atual()!=None and token_atual().isdigit():
+    elif tipo_token_atual() == "FLOAT":
+        numero = float(token_atual())
+        consumir(token_atual())
+        return ("FLOAT", numero)
+    elif tipo_token_atual() == "INT":
         numero = int(token_atual()) # capturar antes do consumo
         consumir(token_atual())
         return ("INT", numero) # retornar depois do consumo
-    elif token_atual()!=None and token_atual().startswith('"') and token_atual().endswith('"'):
+    elif tipo_token_atual() == "STRING":
         texto = token_atual()[1:-1] # capturar antes do consumo, sem as aspas
         consumir(token_atual())
         return ler_entrada(texto)
-    elif token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
+    elif tipo_token_atual() == "ID":
         identificador = token_atual() # capturar antes do consumo
         consumir(token_atual())
         (tipo, valor) = buscar_identificador(identificador)
@@ -201,7 +232,7 @@ def regra_termo():
     while token_atual() in ['*','/']:
         op = token_atual() #Guarda o operador antes de consumir
         consumir(token_atual())
-        direita = regra_fator() #("INT, 3)
+        direita = regra_fator() #("INT", 3)
         esquerda = executar_operacao(esquerda, op, direita) # ("INT", 6)
     return esquerda
 
@@ -220,7 +251,7 @@ def regra_exp():
 # a = 1 + 1 < 2 + 2
 def regra_expc():
     esquerda = regra_exp() # ("INT", 2)
-    if token_atual() in ['<','==','>','@']:
+    if token_atual() in ['<','==','>']:
         op = token_atual()
         consumir(token_atual()) # <
         direita = regra_exp() # ("INT", 4)
@@ -230,7 +261,7 @@ def regra_expc():
 # <atrib> -> _id_ = <expc> ;
 # a = 1 + 1 ;
 def regra_atrib():
-    if token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
+    if tipo_token_atual() == "ID":
         identificador = token_atual() #Capturando antes do consumo o id
         consumir(token_atual()) #a
         consumir("=")
@@ -268,13 +299,11 @@ def regra_if():
             pular_comandos()
         consumir("}")
 
-
-
 def sinal(numero):
     if not executar:
         return None
-    
-    if numero[1] > 0: 
+
+    if numero[1] > 0:
         return "positivo"
     elif numero[1] < 0:
         return "negativo"
@@ -283,12 +312,12 @@ def sinal(numero):
 
 def regra_bloco(executa):
     consumir("{")
-    if token_atual () != "}":
+    if token_atual() != "}":
         if executa:
-            regra_comando()
-        else: 
+            regra_comandos()
+        else:
             pular_comandos()
-        consumir("}")
+    consumir("}")
 
 def regra_positivo():
     consumir("positivo")
@@ -300,6 +329,7 @@ def regra_positivo():
     regra_bloco(resultado == "negativo")
     consumir("zero")
     regra_bloco(resultado == "zero")
+
 # <while> -> while ( <expc> ) { <comandos> }
 # x = 0 ;
 # while ( x < 2 ) {
@@ -324,7 +354,7 @@ def regra_while():
             consumir("}")
             break
 
-# <comando> -> <if> | <while> | <atrib>
+# <comando> -> <if> | <while> | <positivo> | <atrib>
 def regra_comando():
     if token_atual() == "if":
         regra_if()
@@ -332,7 +362,7 @@ def regra_comando():
         regra_while()
     elif token_atual() == "positivo":
         regra_positivo()
-    elif token_atual()!=None and token_atual().isalpha() and token_atual() not in KEYWORDS:
+    elif tipo_token_atual() == "ID":
         regra_atrib()
     else:
         erro_sintatico("era esperado 'if', 'while', 'positivo' ou um identificador mas encontrou '" + str(token_atual()) + "'")
@@ -340,13 +370,8 @@ def regra_comando():
 # <comandos> -> <comando> { <comando> }
 def regra_comandos():
     regra_comando()
-    while token_atual() != None and token_atual().isalpha():
+    while tipo_token_atual() in ["ID", "RESERVADA"]:
         regra_comando()
-
-#Separa o código em tokens (provisório: será trocado pelo autômato do léxico)
-def tokenizar(codigo):
-    padrao = r'".*?"|\w+|==|[=+\-*/<>@(),;{}]'
-    return re.findall(padrao, codigo)
 
 #Função principal
 def analisar(codigo, correto):
@@ -354,20 +379,24 @@ def analisar(codigo, correto):
     global tokens
     global tabela_simbolos
     global executar
+    codigo_atual = codigo
     executar = True
     print("=" * 60)
     print(codigo)
     pos = 0
     tabela_simbolos = {} #Reinicia a tabela de símbolos
-    tokens = tokenizar(codigo)
     ok = True
     try:
+        tokens = tokenizar(codigo)
         regra_comandos() #chamando a regra inicial da gramática
         if pos < len(tokens):
             erro_sintatico("'" + token_atual() + "' não era esperado.")
         else:
             print("A sintaxe está correta.")
             print(tabela_simbolos)
+    except ErroLexico as erro:
+        print("Erro Léxico:", erro)
+        ok = False
     except SystemExit:
         ok = False #só entra aqui se houve erro sintático ou semântico identificado pelas nossas funções de erro.
 
@@ -406,3 +435,5 @@ analisar("a = 1 ; positivo ( a ) { z = 1 ; }", False) # faltam negativo e zero
 analisar("a = 1 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; }", False) # falta zero
 analisar("a = 1 ; positivo ( a ) { z = 1 ; } zero { z = 3 ; }", False) # falta negativo
 analisar("negativo { z = 2 ; }", False) # negativo sem positivo
+analisar('x = 5 ; positivo ( x ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }', True) # z = 1
+analisar('x = 5.67 ;', True)
