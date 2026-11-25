@@ -2,6 +2,32 @@ import math
 import sys
 from tokenizar import ErroLexico, tokenizar
 
+#GRAMÁTICA
+
+#<comandos>   -> <comando> { <comando> }
+#<comando>    -> <if>
+#              | <while>
+#              | <positivo>
+#              | <atrib>                         
+#<bloco>      -> { [ <comandos> ] }               
+#<if>         -> if ( <expc> ) <bloco> [ else <bloco> ]
+#<while>      -> while ( <expc> ) <bloco>
+#<positivo>   -> positivo ( <exp> ) <bloco> negativo <bloco> zero <bloco>
+#<atrib>      -> _id_ = <expc> ;
+#<expc>       -> <exp> [ <comp> <exp> ]
+#<comp>       -> < | == | >
+#<exp>        -> <termo> { <soma> <termo> }
+#<soma>       -> + | - | @                  
+#<termo>      -> <fator> { <mult> <fator> }
+#<mult>       -> * | /
+#<fator>      -> ( <expc> )
+#              | _int_
+#              | _float_
+#              | _string_
+#              | _id_
+#              | <hip>                         
+#<hip>        -> hip ( _id_ , _id_ )          
+
 pos = 0 #Indica qual token está sendo lido
 KEYWORDS = ['if', 'else', 'while', 'hip', 'positivo','negativo','zero'] #Palavras reservadas: não podem ser identificadores
 tabela_simbolos = {} #tabela de símbolos
