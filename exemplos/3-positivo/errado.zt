@@ -1,0 +1,6 @@
+x = 3 ;
+positivo ( x ) {
+    z = 1 ;
+} negativo {
+    z = 2 ;
+}

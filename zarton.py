@@ -1,6 +1,6 @@
 import math
 import sys
-from tokenizar import ErroLexico, tokenizar
+from typing import NamedTuple
 
 #GRAMÁTICA
 
@@ -42,28 +42,187 @@ codigo_atual = ""
 # tabela_simbolos["x"] = {"tipo": "INT", "valor": 5}
 # y = tabela_simbolos["y"]
 
+# ==================================== análise léxica ==
+
+class Token(NamedTuple):
+    tipo: str
+    lexema: str
+    posicao: int
+
+
+class ErroLexico(Exception):
+    pass
+
+
+def tokenizar(codigo):
+    entrada = codigo + "\0"
+    tokens = []
+    estado = 0
+    pos = 0
+    inicio = 0
+
+    def linha(p):
+        return "na linha " + str(codigo[:p].count("\n") + 1) + ": "
+
+    def emitir(tipo):
+        nonlocal inicio
+        tokens.append(Token(tipo, entrada[inicio:pos], inicio))
+        inicio = pos
+
+    while pos < len(entrada):
+        if estado == 0:
+            caractere = entrada[pos]
+            if caractere == "\0":
+                pos += 1
+            elif caractere.isalpha() or caractere == "_":
+                estado = 1
+                pos += 1
+            elif caractere.isdigit():
+                estado = 5
+                pos += 1
+            elif caractere == "#":
+                estado = 10
+                pos += 1
+            elif entrada.startswith("/*", pos):
+                estado = 11
+                pos += 2
+            elif caractere == '"':
+                estado = 13
+                pos += 1
+            elif caractere == "'":
+                estado = 15
+                pos += 1
+            elif caractere in ["+", "-", "/", "*", "@"]:
+                estado = 6
+                pos += 1
+            elif caractere in ["=", ">", "<", "!"]:
+                estado = 7
+                pos += 1
+            elif caractere in [" ", "\n", "\t", "\r"]:
+                pos += 1
+                inicio = pos
+            elif caractere in ["(", ")", ",", ";", "{", "}"]:
+                pos += 1
+                emitir("PONTUACAO")
+            else:
+                raise ErroLexico(linha(pos) + "o símbolo '" + caractere + "' não foi identificado"
+                )
+        elif estado == 1:
+            if entrada[pos].isalnum() or entrada[pos] == "_":
+                pos += 1
+            else:
+                estado = 2
+        elif estado == 2:
+            lexema = entrada[inicio:pos]
+            tipo = "RESERVADA" if lexema in KEYWORDS else "ID"
+            emitir(tipo)
+            estado = 0
+        elif estado == 5:
+            if entrada[pos].isdigit():
+                pos += 1
+            elif (entrada[pos] in [".", ","] and entrada[pos + 1].isdigit()):
+                estado = 8
+                pos += 1
+            else:
+                estado = 4
+        elif estado == 8:
+            if entrada[pos].isdigit():
+                pos += 1
+            else:
+                estado = 9
+        elif estado == 4:
+            emitir("INT")
+            estado = 0
+        elif estado == 9:
+            if pos == inicio or entrada[pos - 1] == ".":
+                raise ErroLexico(linha(inicio) + "número decimal inválido")
+            emitir("FLOAT")
+            estado = 0
+        elif estado == 6:
+            lexema = entrada[inicio:pos]
+            emitir("ATRIBUICAO" if lexema == "=" else "OP")
+            estado = 0
+        elif estado == 7:
+            if entrada[pos] == "=":
+                pos += 1
+            estado = 6
+        elif estado == 10:
+            if entrada[pos] in ["\n", "\0"]:
+                estado = 0
+                pos += 1
+                inicio = pos
+            else:
+                pos += 1
+        elif estado == 11:
+            if entrada.startswith("*/", pos):
+                pos += 2
+                inicio = pos
+                estado = 0
+            elif entrada[pos] == "\0":
+                raise ErroLexico(linha(inicio) + "faltou fechar o comentário")
+            else:
+                pos += 1
+        elif estado == 13:
+            if entrada[pos] == '"':
+                pos += 1
+                estado = 14
+            elif entrada[pos] == "\0":
+                raise ErroLexico(linha(inicio) + "string sem fechamento")
+            else:
+                pos += 1
+        elif estado == 14:
+            emitir("STRING")
+            estado = 0
+        elif estado == 15:
+            if entrada[pos] == "'":
+                pos += 1
+                estado = 17
+            elif entrada[pos] == "\0":
+                raise ErroLexico(linha(inicio) + "char sem fechamento")
+            else:
+                estado = 16
+                pos += 1
+        elif estado == 16:
+            if entrada[pos] == "'":
+                pos += 1
+                estado = 19
+            elif entrada[pos] == "\0":
+                raise ErroLexico(linha(inicio) + "char sem fechamento")
+            else:
+                estado = 18
+                pos += 1
+        elif estado == 18:
+            if entrada[pos] == "'":
+                pos += 1
+                estado = 20
+            elif entrada[pos] == "\0":
+                raise ErroLexico(linha(inicio) + "char sem fechamento")
+            else:
+                pos += 1
+        elif estado == 19:
+            emitir("CHAR")
+            estado = 0
+        elif estado == 17:
+            raise ErroLexico(linha(inicio) + "char vazio")
+        elif estado == 20:
+            raise ErroLexico(linha(inicio) + "o char deveria ter no máximo 1 símbolo")
+
+    return tokens
+
 # ==================================== interpretador ==
 
 def obter_linha(indice=None):
     if indice is None:
         indice = pos
-    if not codigo_atual:
-        return 1
     if not tokens:
         return 1
-
-    idx=min(max(indice, 0), len(tokens)-1)
-    lexema = tokens[idx].lexema
-
-    pos_char = codigo_atual.find(lexema)
-    if pos_char == -1:
-        return 1
-    return codigo_atual[:pos_char].count("\n") + 1   
+    idx = min(max(indice, 0), len(tokens) - 1)
+    return codigo_atual[:tokens[idx].posicao].count("\n") + 1
 
 def erro_semantico(msg, linha=None):
     if linha is None:
         linha = obter_linha()
-    print(f"Linha {linha}: Erro Semântico:", msg)
+    print(f"Erro Semântico na linha {linha}:", msg)
     sys.exit(1)
 
 def executar_operacao(esquerda, op, direita):
@@ -178,6 +337,12 @@ def token_atual():
     else:
         return None
 
+#Texto do token atual para mensagens de erro
+def encontrado():
+    if token_atual() is None:
+        return "o fim do arquivo"
+    return "'" + token_atual() + "'"
+
 def tipo_token_atual():
     if pos < len(tokens):
         return tokens[pos].tipo
@@ -189,7 +354,7 @@ def erro_sintatico(msg, linha=None):
     if linha is None:
         linha = obter_linha()
     print("Contexto: " + ' '.join(token.lexema for token in tokens[0:pos]))
-    print(f"Linha {linha}: Erro Sintático:", msg)
+    print(f"Erro Sintático na linha {linha}:", msg)
     sys.exit(1)
 
 #avalia se o token é igual ao token esperado
@@ -199,7 +364,7 @@ def consumir(token_esperado):
     if token_atual() == token_esperado:
         pos = pos + 1 #avança para o proximo token
     else:
-        erro_sintatico("era esperado '" + token_esperado + "' mas encontrou '" + str(token_atual()) + "'")
+        erro_sintatico("era esperado '" + token_esperado + "' mas encontrou " + encontrado())
 
 #Consome um identificador e retorna o nome dele, ou causa erro sintático.
 def consumir_identificador():
@@ -232,7 +397,7 @@ def regra_fator():
         consumir(")")
         return temp #retorno depois do consumo
     elif tipo_token_atual() == "FLOAT":
-        numero = float(token_atual())
+        numero = float(token_atual().replace(",", ".")) # 2,5 -> 2.5
         consumir(token_atual())
         return ("FLOAT", numero)
     elif tipo_token_atual() == "INT":
@@ -249,7 +414,7 @@ def regra_fator():
         (tipo, valor) = buscar_identificador(identificador)
         return (tipo, valor)
     else:
-        erro_sintatico("era esperado '(', um número, uma string ou um identificador mas encontrou '" + str(token_atual()) + "'")
+        erro_sintatico("era esperado '(', um número, uma string ou um identificador mas encontrou " + encontrado())
 
 # <termo> -> <fator> { <mult> <fator> }
 # a = 2 * 3 * 4
@@ -296,7 +461,7 @@ def regra_atrib():
         salvar_identificador(identificador, temp)
         #NÃO TEM RETURN
     else:
-        erro_sintatico("era esperado um identificador mas encontrou '" + str(token_atual()) + "'")
+        erro_sintatico("era esperado um identificador mas encontrou " + encontrado())
 
 # <if> -> if ( <expc> ) { <comandos> } [ else { <comandos> } ]
 # a = 1 ;
@@ -391,7 +556,7 @@ def regra_comando():
     elif tipo_token_atual() == "ID":
         regra_atrib()
     else:
-        erro_sintatico("era esperado 'if', 'while', 'positivo' ou um identificador mas encontrou '" + str(token_atual()) + "'")
+        erro_sintatico("era esperado 'if', 'while', 'positivo' ou um identificador mas encontrou " + encontrado())
 
 # <comandos> -> <comando> { <comando> }
 def regra_comandos():
@@ -399,67 +564,31 @@ def regra_comandos():
     while tipo_token_atual() in ["ID", "RESERVADA"]:
         regra_comando()
 
-#Função principal
-def analisar(codigo, correto):
-    global pos
-    global tokens
-    global tabela_simbolos
-    global executar
+def rodar(codigo):
+    global pos, tokens, tabela_simbolos, executar, codigo_atual
     codigo_atual = codigo
-    executar = True
-    print("=" * 60)
-    print(codigo)
     pos = 0
-    tabela_simbolos = {} #Reinicia a tabela de símbolos
-    ok = True
+    tokens = []
+    tabela_simbolos = {}
+    executar = True
     try:
         tokens = tokenizar(codigo)
-        regra_comandos() #chamando a regra inicial da gramática
-        if pos < len(tokens):
-            erro_sintatico("'" + token_atual() + "' não era esperado.")
-        else:
-            print("A sintaxe está correta.")
-            print(tabela_simbolos)
     except ErroLexico as erro:
-        print("Erro Léxico:", erro)
-        ok = False
-    except SystemExit:
-        ok = False #só entra aqui se houve erro sintático ou semântico identificado pelas nossas funções de erro.
+        print("Erro Léxico", erro)
+        sys.exit(1)
+    regra_comandos() #chamando a regra inicial da gramática
+    if pos < len(tokens):
+        erro_sintatico("'" + token_atual() + "' não era esperado.")
 
-    print("[OK]" if ok == correto else "[PROBLEMA]")
-
-analisar("a = 1 ; b = 2 ; z = a @ b ;", True)  # z=2
-analisar("z = 1 @  ;", False)  # "Erro sintático! Esperava INT ou o indentificador, mas encontrou ";""
-analisar("z = 1 @ 2 @ 3 ;", True) # z = 3
-analisar("z = ( 1 @ 2 ) + ( 3 @ 4 ) ;", True)
-analisar("z = 1 @ 2 + 3 @ 4 ;", True) #z = 5
-analisar("a = 3 ; b = 4 ; z = hip ( a , b ) ;", True) # z = 5.0
-analisar("a = 3 ; b = 4 ; z = hip ( a , b ) @ 2 * 3 ;", True) # z = 6
-analisar("z = hip ( 3 , 4 ) ;", False) # só aceita identificador
-analisar("a = 3 ; z = hip ( a , c ) ;", False) # c não declarado
-analisar("a = 0 ; if ( a ) { z = hip ( a , c ) ; }", True) # não executa: c não é buscado
-analisar('z = "Digite o valor:" ;', True) # usuário digita 7 -> z = 7
-analisar('z = "Primeiro:" + "Segundo:" ;', True) # lê dois números e soma
-analisar('z = "Decimal:" * 2 ;', True) # usuário digita 1,5 -> z = 3.0
-analisar('z = "Digite:" ;', False) # usuário digita abc -> erro semântico
-analisar('a = 0 ; if ( a ) { z = "não pergunta" ; }', True) # bloco pulado: não lê nada
-analisar("a = 5 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 1
-analisar("a = 0 - 5 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 2
-analisar("a = 0 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 3
-analisar("a = 1 ; positivo ( a - 3 ) { z = 1 ; } negativo { } zero { z = 3 ; }", True) # negativo vazio: nada executa
-analisar("positivo ( 1 ) { } negativo { } zero { }", True) # todos os blocos vazios
-analisar("a = 2 ; b = 3 ; positivo ( a + b ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 1
-analisar("a = 2 ; b = 3 ; positivo ( a - b * 2 ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 2
-analisar("a = 2 ; b = 2 ; positivo ( ( a - b ) * 5 ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }", True) # z = 3
-analisar("a = 0 - 2 ; b = 0 - 3 ; positivo ( a @ b ) { z = 1 ; } negativo { z = 2 ; } zero { }", True) # z = 2
-analisar("a = 2 ; b = 3 ; positivo ( a < b ) { z = 1 ; } negativo { } zero { }", False) # comparação (booleano) não é permitida
-analisar("a = 2 ; b = 3 ; positivo ( a + 1 == b ) { z = 1 ; } negativo { } zero { }", False) # comparação (booleano) não é permitida
-analisar("a = 1 ; positivo ( a ) { z = 1 ; } negativo { z = hip ( a , c ) ; } zero { }", True) # bloco pulado: c não é buscado
-analisar("a = 1 ; if ( 0 ) { positivo ( a ) { z = 1 ; } negativo { } zero { } }", True) # dentro de bloco pulado: nada executa
-analisar("a = 1 ; positivo ( a ) { z = 1 ; } zero { z = 3 ; } negativo { z = 2 ; }", False) # ordem errada
-analisar("a = 1 ; positivo ( a ) { z = 1 ; }", False) # faltam negativo e zero
-analisar("a = 1 ; positivo ( a ) { z = 1 ; } negativo { z = 2 ; }", False) # falta zero
-analisar("a = 1 ; positivo ( a ) { z = 1 ; } zero { z = 3 ; }", False) # falta negativo
-analisar("negativo { z = 2 ; }", False) # negativo sem positivo
-analisar('x = 5 ; positivo ( x ) { z = 1 ; } negativo { z = 2 ; } zero { z = 3 ; }', True) # z = 1
-analisar('x = 5.67 ;', True)
+# Uso: python3 zarton.py programa.zt
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Uso: python3 zarton.py <arquivo.zt>")
+        sys.exit(1)
+    try:
+        with open(sys.argv[1], encoding="utf-8") as arquivo:
+            codigo = arquivo.read()
+    except OSError:
+        print("Não foi possível abrir o arquivo '" + sys.argv[1] + "'.")
+        sys.exit(1)
+    rodar(codigo)

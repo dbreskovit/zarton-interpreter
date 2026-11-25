@@ -1,0 +1,8 @@
+x = 0 - 5 ;
+positivo ( x ) {
+    z = 1 ;
+} negativo {
+    z = 2 ;
+} zero {
+    z = 3 ;
+}
