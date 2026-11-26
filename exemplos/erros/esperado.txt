@@ -1,0 +1,19 @@
+Exemplos obrigatórios de erro: um de cada tipo.
+Todos indicam o tipo do erro e a linha onde ele aconteceu.
+
+lexico.zt
+  O símbolo '$' não existe na linguagem.
+  Saída esperada:
+    Erro Léxico na linha 3: o símbolo '$' não foi identificado
+
+sintatico.zt
+  Falta o ';' no fim da linha 2 ("b = 2").
+  O erro aponta a linha 3, onde está o token encontrado no lugar do ';'.
+  Saída esperada:
+    Contexto: a = 1 ; b = 2
+    Erro Sintático na linha 3: era esperado ';' mas encontrou 'z'
+
+semantico.zt
+  y é usado sem ter sido declarado (a linha 2 está em branco de propósito).
+  Saída esperada:
+    Erro Semântico na linha 3: Identificador 'y' não declarado.

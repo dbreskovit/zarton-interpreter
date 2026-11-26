@@ -1,0 +1,13 @@
+RECURSO: Função hip, hipotenusa (categoria: Funções)
+hip ( a , b ) calcula a raiz de a² + b². Sempre retorna FLOAT.
+Só aceita identificadores como argumentos.
+
+certo.zt
+  a = 3 e b = 4, então hip ( a , b ) = raiz(9 + 16) = 5.0.
+  Saída esperada:
+    z = 5.0
+
+errado.zt
+  b nunca foi declarado antes de ser usado em hip.
+  Saída esperada:
+    Erro Semântico na linha 2: Identificador 'b' não declarado.

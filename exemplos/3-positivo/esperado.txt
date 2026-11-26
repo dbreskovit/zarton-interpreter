@@ -1,0 +1,18 @@
+RECURSO: positivo / negativo / zero (categoria: Controle de fluxo, recurso INOVADOR)
+Avalia uma expressão e executa só o bloco do sinal dela.
+Os três blocos são obrigatórios e vêm sempre nessa ordem.
+
+certo.zt
+  x = 0 - 5 = -5, que é negativo.
+  Só o bloco "negativo" é executado; os outros dois são só analisados (sintaxe).
+  Saída esperada:
+    z = 2
+
+errado.zt
+  Falta o bloco "zero".
+  x = 3 é positivo, então o bloco positivo roda antes de o erro ser encontrado,
+  porque o interpretador executa enquanto analisa.
+  Saída esperada:
+    z = 1
+    Contexto: x = 3 ; positivo ( x ) { z = 1 ; } negativo { z = 2 ; }
+    Erro Sintático na linha 6: era esperado 'zero' mas encontrou o fim do arquivo

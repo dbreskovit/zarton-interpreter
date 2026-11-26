@@ -1,0 +1,17 @@
+RECURSO: Entrada pelo teclado (categoria: Entrada e saída)
+Uma string dentro de uma expressão mostra o texto e lê um número do teclado.
+
+certo.zt
+  Mostra "Digite um numero:" e espera o usuário digitar.
+  Digitando 7, x recebe INT 7 e z = x * 2.
+  Saída esperada:
+    Digite um numero: 7
+    z = 14
+  Se digitar 1,5 ou 1.5, x vira FLOAT e a saída é z = 3.0.
+  Se digitar texto (ex.: abc): Erro Semântico, o valor digitado não é um número.
+
+errado.zt
+  A string não tem as aspas de fechamento.
+  O analisador léxico chega no fim do arquivo ainda dentro da string.
+  Saída esperada:
+    Erro Léxico na linha 1: string sem fechamento

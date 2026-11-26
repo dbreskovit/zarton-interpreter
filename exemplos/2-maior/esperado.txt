@@ -1,0 +1,16 @@
+RECURSO: Operador @, maior entre dois valores (categoria: Operadores)
+a @ b retorna o maior valor. Tem a mesma precedência de + e -.
+
+certo.zt
+  a = 15 e b = 20, então a @ b = 20.
+  25 @ 18 = 25.
+  Saída esperada:
+    z = 20
+    z = 25
+
+errado.zt
+  "z = a @ ;" não tem o segundo operando depois do @.
+  O analisador sintático esperava um fator e encontrou ';'.
+  Saída esperada:
+    Contexto: a = 15 ; b = 20 ; z = a @
+    Erro Sintático na linha 3: era esperado '(', um número, uma string ou um identificador mas encontrou ';'

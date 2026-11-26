@@ -1,0 +1,15 @@
+RECURSO: Float com vírgula (categoria: Novos tipos)
+A vírgula define o FLOAT (2,5). O ponto (2.5) continua valendo.
+A vírgula só vira decimal se vier um dígito logo depois.
+
+certo.zt
+  x = 2,5 é FLOAT 2.5, então z = x * 2 = 5.0.
+  Saída esperada:
+    z = 5.0
+
+errado.zt
+  "2,5,3": o léxico lê FLOAT 2,5 e depois a vírgula sobra como pontuação.
+  O analisador sintático esperava ';' no fim da atribuição.
+  Saída esperada:
+    Contexto: x = 2,5
+    Erro Sintático na linha 1: era esperado ';' mas encontrou ','
